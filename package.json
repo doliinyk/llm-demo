@@ -1,0 +1,25 @@
+{
+  "name": "llm-demo",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "npm run start:compose && node index.js",
+    "dev": "npm run start:compose && nodemon index.js",
+    "start:compose": "docker-compose up -d",
+    "stop:compose": "docker-compose down",
+    "benchmark": "node benchmarks/benchmark.js",
+    "visualize": "python3 analysis/visualizer.py",
+    "test": "npm run benchmark && npm run visualize",
+    "demo": "npm run start:compose && node index.js"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "redis": "^5.6.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  }
+}

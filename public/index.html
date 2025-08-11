@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLM Demo</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        background: #f5f5f5;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .header {
+        background: #fff;
+        padding: 1rem;
+        border-bottom: 1px solid #ddd;
+      }
+
+      .header h1 {
+        color: #333;
+        text-align: center;
+        margin-bottom: 0.5rem;
+      }
+
+      .controls {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .control-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #e9ecef;
+        padding: 0.5rem 1rem;
+        border-radius: 5px;
+        color: #333;
+      }
+
+      .control-group label {
+        font-size: 0.9rem;
+      }
+
+      input[type='checkbox'] {
+        transform: scale(1.2);
+      }
+
+      .main-container {
+        display: flex;
+        flex: 1;
+        gap: 1rem;
+        padding: 1rem;
+        overflow: hidden;
+      }
+
+      .chat-container {
+        flex: 2;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      }
+
+      .metrics-container {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 1.5rem;
+        overflow-y: auto;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      }
+
+      .chat-messages {
+        flex: 1;
+        padding: 1.5rem;
+        overflow-y: auto;
+        scroll-behavior: smooth;
+      }
+
+      .message {
+        margin-bottom: 1rem;
+        opacity: 0;
+        animation: fadeInUp 0.3s ease-out forwards;
+      }
+
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .message.user {
+        text-align: right;
+      }
+
+      .message.assistant {
+        text-align: left;
+      }
+
+      .message-content {
+        display: inline-block;
+        max-width: 80%;
+        padding: 1rem 1.5rem;
+        border-radius: 20px;
+        position: relative;
+        word-wrap: break-word;
+      }
+
+      .message.user .message-content {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+      }
+
+      .message.assistant .message-content {
+        background: #f0f2f5;
+        color: #333;
+        border: 1px solid #e0e0e0;
+      }
+
+      .message-meta {
+        font-size: 0.7rem;
+        color: #666;
+        margin-top: 0.25rem;
+      }
+
+      .typing-indicator {
+        display: none;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1rem;
+        color: #666;
+        font-style: italic;
+      }
+
+      .typing-dots {
+        display: flex;
+        gap: 4px;
+      }
+
+      .typing-dots span {
+        width: 6px;
+        height: 6px;
+        background: #667eea;
+        border-radius: 50%;
+        animation: typing 1.4s infinite;
+      }
+
+      .typing-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      .typing-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      @keyframes typing {
+        0%,
+        60%,
+        100% {
+          transform: translateY(0);
+          opacity: 0.4;
+        }
+
+        30% {
+          transform: translateY(-10px);
+          opacity: 1;
+        }
+      }
+
+      .chat-input-container {
+        padding: 1.5rem;
+        border-top: 1px solid #e0e0e0;
+        background: rgba(255, 255, 255, 0.5);
+      }
+
+      .input-group {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      #messageInput {
+        flex: 1;
+        padding: 1rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 25px;
+        font-size: 1rem;
+        outline: none;
+        transition: all 0.3s ease;
+      }
+
+      #messageInput:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      .btn {
+        padding: 1rem 1.5rem;
+        border: none;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        font-weight: 600;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+      }
+
+      .btn-secondary {
+        background: #f0f2f5;
+        color: #333;
+        border: 1px solid #e0e0e0;
+      }
+
+      .btn-secondary:hover {
+        background: #e8e8e8;
+      }
+
+      .metrics-section {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .metrics-section:last-child {
+        border-bottom: none;
+      }
+
+      .metrics-section h3 {
+        color: #333;
+        margin-bottom: 0.75rem;
+        font-size: 1.1rem;
+      }
+
+      .metric-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+      }
+
+      .metric-label {
+        font-size: 0.9rem;
+        color: #666;
+      }
+
+      .metric-value {
+        font-weight: 600;
+        color: #333;
+      }
+
+      .metric-badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+
+      .badge-success {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .badge-warning {
+        background: #fff3cd;
+        color: #856404;
+      }
+
+      .badge-info {
+        background: #d1ecf1;
+        color: #0c5460;
+      }
+
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #28a745;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+        }
+
+        70% {
+          box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+        }
+
+        100% {
+          box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+        }
+      }
+
+      .recent-requests {
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .request-item {
+        font-size: 0.8rem;
+        padding: 0.5rem;
+        margin-bottom: 0.25rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid #667eea;
+      }
+
+      .loading-skeleton {
+        background: linear-gradient(
+          90deg,
+          #f0f0f0 25%,
+          #e0e0e0 50%,
+          #f0f0f0 75%
+        );
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite;
+        border-radius: 4px;
+        height: 20px;
+        margin: 0.25rem 0;
+      }
+
+      @keyframes loading {
+        0% {
+          background-position: 200% 0;
+        }
+
+        100% {
+          background-position: -200% 0;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .main-container {
+          flex-direction: column;
+        }
+
+        .controls {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .message-content {
+          max-width: 95%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>LLM Web Integration Research Platform</h1>
+      <div class="controls">
+        <div class="control-group">
+          <input type="checkbox" id="useCache" checked />
+          <label for="useCache">Enable Caching</label>
+        </div>
+        <div class="control-group">
+          <input type="checkbox" id="useStreaming" checked />
+          <label for="useStreaming">Enable Streaming</label>
+        </div>
+        <div class="control-group">
+          <button class="btn btn-secondary" onclick="clearContext()">
+            Clear Context
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-container">
+      <div class="chat-container">
+        <div class="chat-messages" id="messages">
+          <div class="message assistant">
+            <div class="message-content">
+              Welcome! I'm your AI research assistant. This platform
+              demonstrates LLM integration with web applications, featuring
+              caching, context management, and real-time streaming. Ask me
+              anything to test the system!
+            </div>
+            <div class="message-meta">System message</div>
+          </div>
+        </div>
+
+        <div class="typing-indicator" id="typingIndicator">
+          <div class="typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <span>AI is thinking...</span>
+        </div>
+
+        <div class="chat-input-container">
+          <div class="input-group">
+            <input
+              type="text"
+              id="messageInput"
+              placeholder="Type your message here..."
+              autocomplete="off" />
+            <button class="btn btn-primary" onclick="sendMessage()">
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="metrics-container">
+        <div class="status-indicator">
+          <div class="status-dot" id="statusDot"></div>
+          <span>System Active</span>
+        </div>
+
+        <div class="metrics-section">
+          <h3>Real-time Performance</h3>
+          <div class="metric-item">
+            <span class="metric-label">Last Response Time</span>
+            <span class="metric-value" id="lastResponseTime">-</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Average Response Time</span>
+            <span class="metric-value" id="avgResponseTime">-</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Cache Hit Rate</span>
+            <span class="metric-value" id="cacheHitRate">-</span>
+          </div>
+        </div>
+
+        <div class="metrics-section">
+          <h3>Session Statistics</h3>
+          <div class="metric-item">
+            <span class="metric-label">Total Requests</span>
+            <span class="metric-value" id="totalRequests">0</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Cache Status</span>
+            <span class="metric-badge badge-success" id="cacheStatus"
+              >Enabled</span
+            >
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Streaming Status</span>
+            <span class="metric-badge badge-info" id="streamingStatus"
+              >Enabled</span
+            >
+          </div>
+        </div>
+
+        <div class="metrics-section">
+          <h3>Recent Requests</h3>
+          <div class="recent-requests" id="recentRequests">
+            <div class="request-item">No requests yet</div>
+          </div>
+        </div>
+
+        <div class="metrics-section">
+          <h3>System Health</h3>
+          <div class="metric-item">
+            <span class="metric-label">LLaMA 2 API</span>
+            <span class="metric-badge badge-success" id="llamaStatus"
+              >Checking...</span
+            >
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">Redis Cache</span>
+            <span class="metric-badge badge-success" id="redisStatus"
+              >Checking...</span
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const socket = io();
+      let sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
+      let isWaitingForResponse = false;
+      let currentMessage = '';
+
+      const messagesContainer = document.getElementById('messages');
+      const messageInput = document.getElementById('messageInput');
+      const typingIndicator = document.getElementById('typingIndicator');
+      const useCacheCheckbox = document.getElementById('useCache');
+      const useStreamingCheckbox = document.getElementById('useStreaming');
+
+      const lastResponseTimeEl = document.getElementById('lastResponseTime');
+      const avgResponseTimeEl = document.getElementById('avgResponseTime');
+      const cacheHitRateEl = document.getElementById('cacheHitRate');
+      const totalRequestsEl = document.getElementById('totalRequests');
+      const cacheStatusEl = document.getElementById('cacheStatus');
+      const streamingStatusEl = document.getElementById('streamingStatus');
+      const recentRequestsEl = document.getElementById('recentRequests');
+      const llamaStatusEl = document.getElementById('llamaStatus');
+      const redisStatusEl = document.getElementById('redisStatus');
+
+      document.addEventListener('DOMContentLoaded', function () {
+        messageInput.addEventListener('keypress', function (e) {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+
+        useCacheCheckbox.addEventListener('change', updateControlStatus);
+        useStreamingCheckbox.addEventListener('change', updateControlStatus);
+
+        updateControlStatus();
+        checkSystemHealth();
+
+        setInterval(checkSystemHealth, 30000);
+      });
+
+      function updateControlStatus() {
+        cacheStatusEl.textContent = useCacheCheckbox.checked
+          ? 'Enabled'
+          : 'Disabled';
+        cacheStatusEl.className = `metric-badge ${
+          useCacheCheckbox.checked ? 'badge-success' : 'badge-warning'
+        }`;
+
+        streamingStatusEl.textContent = useStreamingCheckbox.checked
+          ? 'Enabled'
+          : 'Disabled';
+        streamingStatusEl.className = `metric-badge ${
+          useStreamingCheckbox.checked ? 'badge-info' : 'badge-warning'
+        }`;
+      }
+
+      async function checkSystemHealth() {
+        try {
+          const response = await fetch('/api/health');
+          const health = await response.json();
+
+          llamaStatusEl.textContent = health.services.llama
+            ? 'Online'
+            : 'Offline';
+          llamaStatusEl.className = `metric-badge ${
+            health.services.llama ? 'badge-success' : 'badge-warning'
+          }`;
+
+          redisStatusEl.textContent = health.services.redis
+            ? 'Online'
+            : 'Offline';
+          redisStatusEl.className = `metric-badge ${
+            health.services.redis ? 'badge-success' : 'badge-warning'
+          }`;
+        } catch (error) {
+          console.error('Health check failed:', error);
+          llamaStatusEl.textContent = 'Error';
+          llamaStatusEl.className = 'metric-badge badge-warning';
+          redisStatusEl.textContent = 'Error';
+          redisStatusEl.className = 'metric-badge badge-warning';
+        }
+      }
+
+      function sendMessage() {
+        const message = messageInput.value.trim();
+        if (!message || isWaitingForResponse) return;
+
+        isWaitingForResponse = true;
+        currentMessage = '';
+
+        addMessage('user', message);
+
+        messageInput.value = '';
+        messageInput.disabled = true;
+
+        showTypingIndicator();
+
+        socket.emit('chat_message', {
+          message,
+          sessionId,
+          useCache: useCacheCheckbox.checked,
+          useStreaming: useStreamingCheckbox.checked
+        });
+      }
+
+      function addMessage(role, content, metadata = {}) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${role}`;
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.textContent = content;
+
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'message-meta';
+
+        let metaText = new Date().toLocaleTimeString();
+        if (metadata.cached !== undefined) {
+          metaText += metadata.cached ? ' • Cached' : ' • Generated';
+        }
+        if (metadata.responseTime) {
+          metaText += ` • ${metadata.responseTime}ms`;
+        }
+
+        metaDiv.textContent = metaText;
+
+        messageDiv.appendChild(contentDiv);
+        messageDiv.appendChild(metaDiv);
+
+        messagesContainer.appendChild(messageDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
+      let currentAssistantMessage = null;
+
+      function updateAssistantMessage(content, metadata = {}) {
+        if (!currentAssistantMessage) {
+          currentAssistantMessage = document.createElement('div');
+          currentAssistantMessage.className = 'message assistant';
+
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'message-content';
+          currentAssistantMessage.appendChild(contentDiv);
+
+          const metaDiv = document.createElement('div');
+          metaDiv.className = 'message-meta';
+          currentAssistantMessage.appendChild(metaDiv);
+
+          messagesContainer.appendChild(currentAssistantMessage);
+        }
+
+        const contentDiv =
+          currentAssistantMessage.querySelector('.message-content');
+        const metaDiv = currentAssistantMessage.querySelector('.message-meta');
+
+        contentDiv.textContent = content;
+
+        let metaText = new Date().toLocaleTimeString();
+        if (metadata.cached !== undefined) {
+          metaText += metadata.cached ? ' • Cached' : ' • Generated';
+        }
+
+        metaDiv.textContent = metaText;
+
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
+      function showTypingIndicator() {
+        typingIndicator.style.display = 'flex';
+      }
+
+      function hideTypingIndicator() {
+        typingIndicator.style.display = 'none';
+      }
+
+      function clearContext() {
+        socket.emit('clear_context', { sessionId });
+      }
+
+      socket.on('chat_response', (data) => {
+        hideTypingIndicator();
+        addMessage('assistant', data.response, data.metadata);
+
+        isWaitingForResponse = false;
+        messageInput.disabled = false;
+        messageInput.focus();
+      });
+
+      socket.on('chat_response_chunk', (data) => {
+        hideTypingIndicator();
+
+        currentMessage = data.chunk;
+        updateAssistantMessage(currentMessage, data.metadata);
+
+        if (data.isComplete) {
+          currentAssistantMessage = null;
+          isWaitingForResponse = false;
+          messageInput.disabled = false;
+          messageInput.focus();
+        }
+      });
+
+      socket.on('chat_error', (data) => {
+        hideTypingIndicator();
+        addMessage('assistant', `Error: ${data.error}`, { error: true });
+
+        isWaitingForResponse = false;
+        messageInput.disabled = false;
+        messageInput.focus();
+      });
+
+      socket.on('context_cleared', (data) => {
+        addMessage(
+          'assistant',
+          'Context has been cleared. Starting fresh conversation.',
+          { system: true }
+        );
+      });
+
+      socket.on('metrics_update', (data) => {
+        lastResponseTimeEl.textContent = `${data.responseTime}ms`;
+        avgResponseTimeEl.textContent = `${data.averageResponseTime}ms`;
+        cacheHitRateEl.textContent = `${data.cacheHitRate}%`;
+        totalRequestsEl.textContent = data.totalRequests;
+
+        const requestDiv = document.createElement('div');
+        requestDiv.className = 'request-item';
+        requestDiv.innerHTML = `
+                <div>Response: ${data.responseTime}ms ${
+          data.cached ? '(cached)' : '(generated)'
+        }</div>
+                <div style="font-size: 0.7rem; color: #999; margin-top: 2px;">
+                    ${new Date().toLocaleTimeString()}
+                </div>
+            `;
+
+        recentRequestsEl.insertBefore(requestDiv, recentRequestsEl.firstChild);
+
+        while (recentRequestsEl.children.length > 5) {
+          recentRequestsEl.removeChild(recentRequestsEl.lastChild);
+        }
+      });
+    </script>
+  </body>
+</html>
